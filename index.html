@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Reflection Companion</title>
+<style>
+  :root{font:100%/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:#34342f;background:#fff}
+  *{box-sizing:border-box}
+  body{margin:0}
+  main{max-width:920px;margin:clamp(24px,8vh,82px) auto;padding:0 clamp(12px,3vw,24px) 28px}
+  header{margin:0 4px 22px}
+  h1{font-size:clamp(1.55rem,4vw,2.25rem);line-height:1.15;margin:5px 0 9px;letter-spacing:-.035em}
+  .eyebrow{font-size:.75rem;letter-spacing:.105em;text-transform:uppercase;font-weight:700}
+  .muted,.eyebrow,.step{color:#62625b}
+  p{margin:0}
+  .step{font-size:.84rem;margin:0 4px 8px;font-variant-numeric:tabular-nums}
+  .card{border:1px solid #ebebe8;border-radius:25px;background:#fdfdfd;padding:clamp(16px,3vw,24px)}
+  h2{font-size:clamp(1.15rem,2.8vw,1.45rem);line-height:1.28;margin:0 0 14px;letter-spacing:-.015em}
+  .hint{margin:-3px 0 13px;color:#62625b}
+  .choice{display:flex;align-items:center;gap:14px;min-height:48px;padding:7px 0;cursor:pointer;font-size:clamp(1rem,2.5vw,1.2rem)}
+  input[type="radio"]{appearance:none;flex:0 0 28px;width:28px;height:28px;margin:0;border:1px solid #dadad6;border-radius:50%;background:#fff;display:grid;place-items:center;cursor:pointer}
+  input[type="radio"]:checked{background:#34342e;border-color:#34342e}
+  input[type="radio"]:checked::after{content:"";width:8px;height:8px;border-radius:50%;background:#fff}
+  textarea{width:100%;display:block;min-height:124px;resize:vertical;border:1px solid #d7d7d1;border-radius:14px;background:#fff;color:inherit;padding:12px 14px;font:inherit}
+  button{font:inherit;cursor:pointer;min-height:46px;touch-action:manipulation}
+  .primary{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:10px 16px;border:1px solid #34342e;border-radius:999px;background:#34342e;color:#fff;font-weight:700;margin-top:14px}
+  .primary:hover{background:#22221e}
+  .secondary{background:transparent;border:0;color:#51514b;font-weight:600;padding:4px 10px;margin:3px 0 0}
+  :focus-visible{outline:2px solid #69695e;outline-offset:3px}
+  h2:focus{outline:none}
+  .error{margin-top:9px;color:#982b25;font-size:.9rem}
+  dl{margin:0}
+  dt{font-weight:700;margin-top:15px}
+  dd{margin:4px 0 0;color:#505049;white-space:pre-wrap;overflow-wrap:anywhere}
+  #copy-status{font-size:.875rem;margin-top:7px}
+  .footnote{font-size:.8rem;margin:10px 4px 0}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">AI Reflection Companion</div>
+    <h1>Рефлексия после практики</h1>
+    <p class="muted">Вспомните одно задание с ИИ и решите, что попробуете в следующий раз.</p>
+  </header>
+  <p id="step" class="step"></p>
+  <section class="card" aria-labelledby="question">
+    <form id="form" novalidate>
+      <h2 id="question" tabindex="-1"></h2>
+      <p id="hint" class="hint"></p>
+      <div id="field"></div>
+      <p id="error" class="error" role="alert" hidden></p>
+      <button class="primary" type="submit"><span id="next">Продолжить</span><span aria-hidden="true">→</span></button>
+      <button class="secondary" id="back" type="button" hidden>← Назад</button>
+    </form>
+    <section id="result" aria-labelledby="result-title" hidden>
+      <h2 id="result-title" tabindex="-1">Мои выводы</h2>
+      <dl id="summary"></dl>
+      <p id="submit-status" class="muted" role="status" aria-live="polite"></p>
+      <button id="retry" class="secondary" type="button" hidden>Повторить отправку</button>
+      <button id="copy" class="primary" type="button">Скопировать выводы</button>
+      <p id="copy-status" class="muted" role="status" hidden></p>
+      <textarea id="manual-copy" aria-label="Текст для копирования" readonly hidden></textarea>
+      <button id="edit" class="secondary" type="button">← К последнему ответу</button>
+      <button id="reset" class="secondary" type="button">Начать заново</button>
+    </section>
+  </section>
+  <p class="footnote muted">Ответы отправляются анонимно после завершения рефлексии.</p>
+  <noscript><p>Для работы формы включите JavaScript в браузере.</p></noscript>
+</main>
+<script>
+'use strict';
+
+const questions = [
+  {
+    title: 'Что вы создавали с помощью ИИ и каким получился результат?',
+    hint: 'В 1–3 предложениях опишите задачу и назовите одну деталь, которая удалась или требовала доработки.',
+    placeholder: 'Например: я попросила ИИ составить мини-викторину. Ситуации получились понятными, но некоторые ответы были слишком очевидными.'
+  },
+  {
+    title: 'Насколько результат совпал с вашими ожиданиями?',
+    hint: 'Выберите вариант, который лучше всего описывает ваш опыт.',
+    options: [
+      'Совпал — результат подошёл сразу.',
+      'Частично совпал — некоторые детали пришлось доработать.',
+      'Сильно отличался — пришлось заметно изменить запрос или переделать результат.',
+      'Превзошёл ожидания — в результате нашлось что-то полезное, чего я не планировал(а).'
+    ]
+  },
+  {
+    title: 'Что, по вашему мнению, сильнее всего повлияло на результат?',
+    hint: 'Выберите один наиболее вероятный фактор.',
+    options: [
+      'Описание задачи и аудитории.',
+      'Требования к формату, объёму или уровню сложности.',
+      'Пример или референс в запросе.',
+      'Проверка первого ответа и уточнение запроса.',
+      'Пока трудно выделить один фактор.'
+    ]
+  },
+  {
+    title: 'Что конкретно вы попробуете в похожей задаче в следующий раз?',
+    placeholder: 'В следующий раз я…'
+  }
+];
+
+const nextStepHints = [
+  'Назовите одну деталь о задаче или аудитории, которую добавите, уточните или сохраните в промпте.',
+  'Сформулируйте точнее одно требование к формату, объёму или сложности.',
+  'Опишите пример или референс, который дадите ИИ, и укажите, на что попросите обратить внимание.',
+  'Назовите одну деталь, которую проверите в первом ответе, и сформулируйте уточнение для ИИ.',
+  'Выберите одну деталь промпта, которую вы измените, и укажите, по чему сравните два результата.'
+];
+
+const byId = id => document.getElementById(id);
+const form = byId('form');
+const field = byId('field');
+const question = byId('question');
+const hint = byId('hint');
+const error = byId('error');
+const result = byId('result');
+const status = byId('copy-status');
+const manualCopy = byId('manual-copy');
+let answers = [];
+let index = 0;
+let summaryText = '';
+let submitted = false;
+let sending = false;
+
+function clearError() {
+  error.hidden = true;
+  field.querySelectorAll('[aria-invalid]').forEach(input => input.removeAttribute('aria-invalid'));
+}
+
+function renderQuestion(moveFocus = true) {
+  const item = questions[index];
+  form.hidden = false;
+  result.hidden = true;
+  status.hidden = true;
+  manualCopy.hidden = true;
+  byId('step').textContent = 'Вопрос ' + (index + 1) + ' из ' + questions.length;
+  question.textContent = item.title;
+  hint.textContent = item.hint ?? nextStepHints[answers[2]];
+  byId('next').textContent = index === questions.length - 1 ? 'Посмотреть выводы' : 'Продолжить';
+  byId('back').hidden = index === 0;
+  field.replaceChildren();
+  clearError();
+
+  if (item.options) {
+    const group = document.createElement('div');
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-labelledby', 'question');
+    group.setAttribute('aria-describedby', 'hint error');
+    item.options.forEach((option, optionIndex) => {
+      const label = document.createElement('label');
+      label.className = 'choice';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'answer';
+      input.value = optionIndex;
+      input.checked = answers[index] === optionIndex;
+      const text = document.createElement('span');
+      text.textContent = option;
+      label.append(input, text);
+      group.append(label);
+    });
+    field.append(group);
+  } else {
+    const input = document.createElement('textarea');
+    input.name = 'answer';
+    input.rows = 4;
+    input.maxLength = 1500;
+    input.placeholder = item.placeholder;
+    input.value = answers[index] ?? '';
+    input.setAttribute('aria-labelledby', 'question');
+    input.setAttribute('aria-describedby', 'hint error');
+    field.append(input);
+  }
+
+  if (moveFocus) question.focus();
+}
+
+function rememberAnswer() {
+  if (questions[index].options) {
+    const selected = field.querySelector('input:checked');
+    if (selected) answers[index] = Number(selected.value);
+  } else {
+    answers[index] = field.querySelector('textarea').value;
+  }
+}
+
+function showResult() {
+  const sections = [
+    ['Что я заметил(а)', answers[0].trim() + '\n\nСравнение с ожиданиями: ' + questions[1].options[answers[1]]],
+    ['Что я понял(а)', 'Что могло повлиять на результат: ' + questions[2].options[answers[2]]],
+    ['Что попробую изменить', answers[3].trim()]
+  ];
+  const summary = byId('summary');
+  summary.replaceChildren();
+  for (const [title, value] of sections) {
+    const term = document.createElement('dt');
+    const description = document.createElement('dd');
+    term.textContent = title;
+    description.textContent = value;
+    summary.append(term, description);
+  }
+  summaryText = 'AI Reflection Companion — мои выводы\n\n' +
+    sections.map(([title, value]) => title + '\n' + value).join('\n\n');
+  byId('step').textContent = 'Рефлексия завершена';
+  form.hidden = true;
+  result.hidden = false;
+  byId('result-title').focus();
+  sendAnswers();
+}
+
+const SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxsSHv0Fz2qGcFahobPVO1Ik229Hz0ZfnBm3Ac4hplK6fFWd0oCsk65Fb-7lBM3RH-lXw/exec';
+
+async function sendAnswers() {
+  if (submitted || sending) return;
+  const notice = byId('submit-status');
+  const retry = byId('retry');
+  retry.hidden = true;
+  sending = true;
+  notice.textContent = 'Отправляем ответы…';
+  try {
+    // Apps Script does not expose CORS response headers to external websites.
+    // no-cors allows the POST, but cannot confirm that Sheets saved the row.
+    await fetch(SHEETS_ENDPOINT, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        question1: answers[0].trim(),
+        question2: questions[1].options[answers[1]],
+        question3: questions[2].options[answers[2]],
+        question4: answers[3].trim()
+      })
+    });
+    submitted = true;
+    notice.textContent = 'Ответы отправлены. Сохранение можно проверить в Google Sheets.';
+  } catch (err) {
+    notice.textContent = 'Не удалось отправить ответы. Проверьте подключение и повторите попытку.';
+    retry.hidden = false;
+  } finally {
+    sending = false;
+  }
+}
+byId('retry').addEventListener('click', sendAnswers);
+
+field.addEventListener('input', clearError);
+form.addEventListener('submit', event => {
+  event.preventDefault();
+  rememberAnswer();
+  const options = questions[index].options;
+  if (options ? !Number.isInteger(answers[index]) : !answers[index]?.trim()) {
+    error.textContent = options ? 'Выберите один вариант.' : 'Напишите короткий ответ.';
+    error.hidden = false;
+    const input = field.querySelector('input, textarea');
+    input.setAttribute('aria-invalid', 'true');
+    input.focus();
+    return;
+  }
+  if (index === questions.length - 1) {
+    showResult();
+  } else {
+    index += 1;
+    renderQuestion();
+  }
+});
+byId('back').addEventListener('click', () => {
+  rememberAnswer();
+  index -= 1;
+  renderQuestion();
+});
+byId('edit').addEventListener('click', () => {
+  if (submitted || sending) return;
+  renderQuestion();
+});
+byId('reset').addEventListener('click', () => {
+  if (sending) return;
+  answers = [];
+  submitted = false;
+  byId('submit-status').textContent = '';
+  byId('retry').hidden = true;
+  index = 0;
+  renderQuestion();
+});
+byId('copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(summaryText);
+    status.textContent = 'Выводы скопированы.';
+    manualCopy.hidden = true;
+  } catch {
+    manualCopy.value = summaryText;
+    manualCopy.hidden = false;
+    manualCopy.focus();
+    manualCopy.select();
+    status.textContent = 'Текст выделен. Скопируйте его вручную.';
+  }
+  status.hidden = false;
+});
+renderQuestion(false);
+</script>
+</body>
+</html>
